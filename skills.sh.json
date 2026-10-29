@@ -1,0 +1,11 @@
+{
+  "$schema": "https://skills.sh/schemas/skills.sh.schema.json",
+  "notGrouped": "bottom",
+  "groupings": [
+    {
+      "title": "Miwarang",
+      "description": "Skills for routing OMO delegation through Miwarang.",
+      "skills": ["miwarang-delegation"]
+    }
+  ]
+}
