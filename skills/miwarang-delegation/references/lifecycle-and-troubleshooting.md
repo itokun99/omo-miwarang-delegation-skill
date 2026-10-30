@@ -37,6 +37,10 @@ Miwarang can continue through the configured fallback chain. Once a
 `runId`/`sessionId` exists, Miwarang does not silently start a second task;
 inspect the terminal result with `miwarang_wait`.
 
+There is no DAG watcher or child OMO process for a Miwarang background run.
+The parent agent owns the returned IDs and should wait for multiple runs
+directly rather than creating a separate watcher delegation.
+
 ## Error decision table
 
 | Error | Meaning | Action |

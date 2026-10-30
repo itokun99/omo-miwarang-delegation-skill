@@ -4,7 +4,7 @@ description: "Route OMO category and agent delegation through Miwarang instead o
 license: MIT
 metadata:
   author: itokun99
-  version: "0.2.1"
+  version: "0.2.2"
 ---
 
 # Miwarang Delegation
@@ -183,6 +183,10 @@ or HTTP 429 errors. Explicit `model` or `backend` overrides disable fallback.
 Background start failures can continue through the same chain until a
 `runId`/`sessionId` exists. Once an ID exists, runtime failures are reported
 through `miwarang_wait` rather than retried silently.
+
+Miwarang does not create child OMO or DAG watcher processes. The main agent
+owns the lifecycle: start as many background delegations as needed, retain
+each returned identifier, then wait or cancel each one directly.
 
 Model catalogues are checked inside `miwarang_delegate`; do not ask the
 caller to run a separate model-list tool before every delegation. The agent

@@ -31,7 +31,7 @@ const version = frontmatter[1].match(/^\s+version:\s*["']?([^"'\s]+)["']?\s*$/m)
 if (name !== "miwarang-delegation") fail("skill name must match its directory");
 if (!description?.includes("Use when")) fail("description must contain concrete triggers");
 if (!version) fail("metadata.version is required");
-if (version !== "0.2.1") fail(`expected skill version 0.2.1, got ${version}`);
+if (version !== "0.2.2") fail(`expected skill version 0.2.2, got ${version}`);
 if (skill.split("\n").length > 500) fail("SKILL.md must stay under 500 lines");
 if (!read(readmePath).includes("npx skills add")) fail("README must document installation");
 if (!read(licensePath).includes("MIT License")) fail("MIT LICENSE is required");

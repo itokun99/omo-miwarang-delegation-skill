@@ -1,4 +1,4 @@
-# Miwarang Delegation Skill v0.2.1
+# Miwarang Delegation Skill v0.2.2
 
 An Agent Skill that makes Miwarang the default routing layer for OMO category
 and agent delegation.
@@ -125,6 +125,8 @@ Background delegation returns a backend-specific identifier:
 
 Pass the same identifier to `miwarang_wait` or `miwarang_cancel`. After
 extension or config changes, run `/reload` in the active OMO/Senpi session.
+Miwarang does not create child OMO or DAG watcher processes; the main agent
+owns all background IDs and waits for them directly.
 
 ## Validate locally
 
