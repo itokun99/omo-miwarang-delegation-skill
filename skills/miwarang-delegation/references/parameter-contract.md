@@ -2,6 +2,13 @@
 
 Use this reference when a delegation needs explicit parameters.
 
+## Intent-only rule
+
+`omo.jsonc` supplies the intent/category and policy context. It does not
+provide a target-harness model selection. Never copy its model or backend into
+`miwarang_delegate`. Omit both fields and let Miwarang query the selected
+harness's live catalogue and apply the configured fallback chain.
+
 ## Required values
 
 ### `target`

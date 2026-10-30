@@ -32,6 +32,11 @@ Use `miwarang_cancel` with the same identifier when the caller asks to stop
 the run. Cancellation is asynchronous for command processes and may first
 return a `cancelling` state.
 
+If a backend fails while creating the session or before returning an ID,
+Miwarang can continue through the configured fallback chain. Once a
+`runId`/`sessionId` exists, Miwarang does not silently start a second task;
+inspect the terminal result with `miwarang_wait`.
+
 ## Error decision table
 
 | Error | Meaning | Action |

@@ -1,4 +1,4 @@
-# Miwarang Delegation Skill v0.2.0
+# Miwarang Delegation Skill v0.2.1
 
 An Agent Skill that makes Miwarang the default routing layer for OMO category
 and agent delegation.
@@ -29,6 +29,8 @@ after it is public and installed by users.
 - Documents the recommended Command Code chain: free models first, then
   low-cost models.
 - Prevents accidental forwarding of the parent OMO session's model name.
+- Treats `omo.jsonc` as intent/category input only; Miwarang selects the
+  harness and model from its live catalogue.
 - Handles backend-specific model lists when an explicit backend override
   matches a configured fallback.
 - Explains foreground/background lifecycle, wait/cancel, quota retry, and
@@ -49,10 +51,16 @@ The normal call is backend-agnostic:
 }
 ```
 
-Do not pass `backend: "commandcode"` merely because OpenCode may be exhausted.
-Miwarang's configured fallback chain selects the correct Command Code model
-list. If a backend override is intentional, its route must define compatible
-models for that harness.
+Do not pass `backend: "commandcode"` or a model copied from `omo.jsonc` merely
+because OpenCode may be exhausted. Miwarang's configured fallback chain
+selects the correct Command Code model list and probes it internally. If a
+backend/model override is intentional, it must be a user requirement and the
+model must belong to that backend's live catalogue.
+
+`omo.jsonc` supplies delegation intent and category policy only. The parent
+session's model is not a target-harness model. Miwarang probes the live
+catalogue inside `miwarang_delegate`; a separate model-list call is not
+required for normal routing.
 
 Supported parameters:
 
@@ -61,8 +69,8 @@ Supported parameters:
 | `target` | Full `category:<name>` or `agent:<name>` target. |
 | `prompt` | Preserve the complete task and acceptance criteria. |
 | `mode` | Omit for foreground; use `"background"` for asynchronous work. |
-| `backend` | Omit for normal routing and fallback selection. |
-| `model` | Omit the OMO session model; use only a live target-harness ID. |
+| `backend` | Omit; let Miwarang select the harness and fallback. |
+| `model` | Omit; let Miwarang select from the live target-harness catalogue. |
 | `agent` | Pass only when the configured harness route needs it. |
 | `cwd` | Pass the absolute project directory when scope matters. |
 
@@ -102,6 +110,11 @@ The recommended fallback shape is:
 
 Keep the paid fallback list explicit. Do not put credentials in this
 repository or in prompts.
+
+If Miwarang reports `opencode/... is not in the live model catalog` while the
+selected backend is Command Code, the caller passed a primary-harness model
+to the wrong harness. Remove `backend` and `model` and retry the same target;
+do not copy a model name from `omo.jsonc`.
 
 ## Background lifecycle
 
