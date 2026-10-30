@@ -6,6 +6,11 @@ const skillPath = resolve(root, "skills/miwarang-delegation/SKILL.md");
 const readmePath = resolve(root, "README.md");
 const licensePath = resolve(root, "LICENSE");
 const displayConfigPath = resolve(root, "skills.sh.json");
+const references = [
+  "skills/miwarang-delegation/references/parameter-contract.md",
+  "skills/miwarang-delegation/references/configuration.md",
+  "skills/miwarang-delegation/references/lifecycle-and-troubleshooting.md",
+];
 
 function read(path) {
   return readFileSync(path, "utf8");
@@ -26,9 +31,18 @@ const version = frontmatter[1].match(/^\s+version:\s*["']?([^"'\s]+)["']?\s*$/m)
 if (name !== "miwarang-delegation") fail("skill name must match its directory");
 if (!description?.includes("Use when")) fail("description must contain concrete triggers");
 if (!version) fail("metadata.version is required");
+if (version !== "0.2.0") fail(`expected skill version 0.2.0, got ${version}`);
 if (skill.split("\n").length > 500) fail("SKILL.md must stay under 500 lines");
 if (!read(readmePath).includes("npx skills add")) fail("README must document installation");
 if (!read(licensePath).includes("MIT License")) fail("MIT LICENSE is required");
+for (const reference of references) {
+  if (!readFileSync(resolve(root, reference), "utf8").includes("Miwarang")) {
+    fail(`${reference} is missing Miwarang guidance`);
+  }
+}
+for (const token of ["miwarang_delegate", "miwarang_wait", "miwarang_cancel", "fallbacks"]) {
+  if (!skill.includes(token)) fail(`SKILL.md is missing ${token}`);
+}
 
 const displayConfig = JSON.parse(read(displayConfigPath));
 if (!Array.isArray(displayConfig.groupings) || displayConfig.groupings.length === 0) {

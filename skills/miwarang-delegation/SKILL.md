@@ -4,14 +4,32 @@ description: "Route OMO category and agent delegation through Miwarang instead o
 license: MIT
 metadata:
   author: itokun99
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # Miwarang Delegation
 
 Miwarang is the routing authority for OMO delegation. When this skill is
 active, use the Miwarang tools for configured category and agent targets
-instead of the native `task` tool.
+instead of the native `task` tool. Treat the route configuration as the
+source of truth for backend and model selection.
+
+## Fast path
+
+For every delegation:
+
+1. Normalize the target to `category:<name>` or `agent:<name>`.
+2. Keep the complete target prefix and preserve the original prompt.
+3. Omit `backend` and `model` unless the caller explicitly requires an
+   intentional override.
+4. Set `mode: "background"` only when the caller requests asynchronous work.
+5. Pass `cwd` when the delegated work must happen in a specific project.
+6. Call `miwarang_delegate`.
+7. For background work, save the returned `runId` or `sessionId` and use
+   `miwarang_wait` or `miwarang_cancel`.
+
+Do not add an extra user-facing explanation before delegating. The delegation
+tool call is the routing action.
 
 ## Route every delegation
 
@@ -38,6 +56,27 @@ Miwarang route, route it through `miwarang_delegate` immediately. Preserve:
 
 Do not forward the OMO session's own model name or a model from `omo.jsonc`.
 Omit `model` unless the caller explicitly requires a target-harness model.
+For the full parameter contract, read
+`references/parameter-contract.md`.
+
+## Delegation parameter contract
+
+Use only the following parameters:
+
+| Parameter | Required | Rule |
+| --- | --- | --- |
+| `target` | yes | Full `category:<name>` or `agent:<name>` string. |
+| `prompt` | yes | Original task plus constraints and acceptance criteria. |
+| `mode` | no | `"foreground"` by default or `"background"`. |
+| `backend` | no | Omit for normal routing and configured fallback selection. |
+| `model` | no | Omit unless a target-harness model is explicitly required. |
+| `agent` | no | Pass only when the route or caller needs a specific harness agent. |
+| `cwd` | no | Absolute project directory for the delegated work. |
+
+Never pass the OMO model as `model`. Never pass a model ID from one harness
+when forcing a different harness with `backend`. If an explicit backend is
+necessary, it must have a compatible model list in the route or its matching
+fallback.
 
 ## Foreground and background work
 
@@ -60,11 +99,46 @@ immediately preserve the returned `runId` or `sessionId`. Use:
 Command backends return `runId`; OpenCode returns `sessionId`. Do not replace
 one identifier type with the other.
 
+Foreground result details normally include:
+
+- `backend`: the backend that actually ran the task.
+- `model`: the model that actually ran the task.
+- `target`: the normalized target.
+- `resolvedVia`: `exact`, `wildcard`, or `default`.
+- `fallback` and `fallbackIndex` when a fallback was used.
+
+Background results include a started message and the backend-specific ID in
+`details`. Do not call `miwarang_wait` before a background delegate returns
+its ID.
+
 ## Fallback behavior
 
 Miwarang resolves routes as exact target, namespace wildcard, then
 `defaultRoute`. A route can define ordered `fallbacks`, each with its own
 backend and model list.
+
+The normal call is intentionally backend-agnostic:
+
+```json
+{
+  "target": "category:deep-high",
+  "prompt": "Design the system and return a decision-complete plan.",
+  "cwd": "/workspace/project"
+}
+```
+
+Do **not** write this merely to force a fallback:
+
+```json
+{
+  "backend": "commandcode",
+  "target": "category:deep-high"
+}
+```
+
+Miwarang can match that explicit backend to a configured fallback and use its
+own model list, but omitting `backend` is safer because it preserves the
+entire route chain and lets the resolver choose the correct harness.
 
 The recommended Command Code chain is:
 
@@ -85,6 +159,12 @@ or HTTP 429 errors. Explicit `model` or `backend` overrides disable fallback.
 Background runtime failures are reported through `miwarang_wait` rather than
 retried silently.
 
+Model catalogues are checked inside `miwarang_delegate`; do not ask the
+caller to run a separate model-list tool before every delegation. A catalog
+error such as `opencode/... unavailable` while using Command Code indicates
+that a primary-harness model list was forced onto the wrong backend. Omit the
+backend override or use a route with a matching fallback.
+
 ## Native task boundary
 
 Do not call native `task` for a target covered by Miwarang. If the host blocks
@@ -98,3 +178,12 @@ Never put credentials, API keys, or private configuration values in the
 delegated prompt. Keep secrets in the target harness's own authenticated
 configuration. Use a dedicated worktree when delegating edits to an external
 or high-risk harness.
+
+## Configuration and troubleshooting
+
+Read these references when the route needs more than the fast path:
+
+- `references/configuration.md` for a complete backend/route template and
+  validation rules.
+- `references/lifecycle-and-troubleshooting.md` for result shapes, common
+  errors, and recovery decisions.
