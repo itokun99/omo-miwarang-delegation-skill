@@ -5,11 +5,15 @@
 Foreground execution returns only after the backend returns text:
 
 ```text
-miwarang_delegate -> model selection -> backend execution -> final text
+miwarang_delegate -> route resolution -> backend-specific setup
+  -> backend execution -> final text
 ```
 
-The result details identify the actual backend and model. If `fallback: true`
-is present, inspect `fallbackIndex` and `model` rather than assuming the
+OpenCode uses its harness-configured model and `orchestrator`; Miwarang does
+not query its model catalogue. Command backends use configured model
+candidates, optionally checked against that backend's catalogue. Result
+details include `model` only for command backends. If `fallback: true` is
+present, inspect `fallbackIndex` and the selected backend before assuming the
 primary route ran.
 
 ## Background lifecycle
@@ -33,9 +37,11 @@ the run. Cancellation is asynchronous for command processes and may first
 return a `cancelling` state.
 
 If a backend fails while creating the session or before returning an ID,
-Miwarang can continue through the configured fallback chain. Once a
-`runId`/`sessionId` exists, Miwarang does not silently start a second task;
-inspect the terminal result with `miwarang_wait`.
+Miwarang can continue through the configured backend fallback chain. Command
+backends may also try later configured model candidates for recognized quota
+or rate-limit errors. Once a `runId`/`sessionId` exists, Miwarang does not
+silently start a second task; inspect the terminal result with
+`miwarang_wait`.
 
 There is no DAG watcher or child OMO process for a Miwarang background run.
 The parent agent owns the returned IDs and should wait for multiple runs
@@ -46,11 +52,13 @@ directly rather than creating a separate watcher delegation.
 | Error | Meaning | Action |
 | --- | --- | --- |
 | `No route configured for ...` | Target has no exact, wildcard, or default route. | Stop and report missing config; do not invent a backend. |
-| `No available free model ...` | A `freeOnly` route has no candidate in its backend catalogue. | Omit `backend` and use configured fallback chain, or fix route models. |
-| `opencode/... unavailable` with Command Code catalog | OpenCode model IDs were sent to Command Code. | Remove `backend="commandcode"` or add a matching Command Code fallback. |
-| `Requested model ... is not in the live model catalog` | Explicit model override is invalid for that backend. | Remove `model` or choose an ID from that backend's live catalogue. |
-| `provider.quota`, `402`, or empty OpenCode reply | OpenCode failed at runtime. | Let foreground fallback continue; do not retry background silently. |
-| Command `quota`, `rate limit`, `5-hour`, `weekly limit`, `credits`, or `429` | Command backend exhausted a quota or rate limit. | Let foreground model fallback continue to the next configured candidate. |
+| `Backend ... is not configured` | A manually supplied `backend` value is not a key in the configured `backends` object. | Omit `backend` and retry with the same target and prompt; only use an exact configured key for an explicit user override. |
+| `No configured model is available for ...` | No configured command candidate is present in that backend's live catalogue. | Correct the command route's `models` list or use a configured backend fallback. OpenCode does not use this model-selection path. |
+| A configured OpenCode model ID is absent from Command Code's catalogue | A Command Code route contains a model ID from another harness. | Replace it with a Command Code candidate; do not copy model IDs across harnesses. |
+| `Requested model ... is not in the live model catalog` | An explicit command-backend model override is invalid. | Omit `model` or verify an ID supported by that backend. OpenCode rejects model overrides. |
+| OpenCode rejects `model` or `agent` overrides | OpenCode owns its model default and Miwarang selects `orchestrator`. | Omit both parameters. |
+| `provider.quota`, `402`, or empty OpenCode reply | OpenCode failed during execution. | Allow a configured backend fallback; do not retry with a Miwarang model list. |
+| Command `quota`, `rate limit`, `5-hour`, `weekly limit`, `credits`, or `429` | Command backend exhausted a quota or rate limit. | Allow foreground candidate and backend fallback in configured order. |
 | `Task state: failed` from `miwarang_wait` | A background process ended unsuccessfully. | Read the returned error and fix config/auth; do not blindly repeat. |
 
 ## Common mistakes
@@ -59,6 +67,13 @@ directly rather than creating a separate watcher delegation.
 
 Do not pass the model selected by the parent OMO session. OMO model IDs may
 belong to neither OpenCode nor Command Code.
+
+### Passing `backend` or `agent` in normal calls
+
+Normal calls send `target` and `prompt`, with `mode` or `cwd` only when needed.
+For `target: "agent:explore"`, put `agent:explore` in `target` only; do not
+send `agent: "explore"` or a guessed `backend`. If you see `Backend ... is not
+configured`, remove the `backend` field and retry the same target.
 
 ### Forcing a fallback backend
 
@@ -82,8 +97,9 @@ Avoid:
 }
 ```
 
-If an explicit backend is required, use a model from that backend's route or
-matching fallback, never the primary harness's model ID.
+If an explicit backend is required, omit `model` unless the caller
+intentionally pins a command-backend model supported by that backend. Never
+pass the primary harness's model ID to a different backend.
 
 ### Forgetting the full target prefix
 

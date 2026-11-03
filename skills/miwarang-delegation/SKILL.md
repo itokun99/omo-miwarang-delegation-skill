@@ -4,7 +4,7 @@ description: "Route OMO category and agent delegation through Miwarang instead o
 license: MIT
 metadata:
   author: itokun99
-  version: "0.2.2"
+  version: "0.2.3"
 ---
 
 # Miwarang Delegation
@@ -12,7 +12,8 @@ metadata:
 Miwarang is the routing authority for OMO delegation. When this skill is
 active, use the Miwarang tools for configured category and agent targets
 instead of the native `task` tool. Treat the route configuration as the
-source of truth for backend and model selection.
+source of truth for backend and, on command routes, ordered model candidates.
+OpenCode uses its harness-configured default model.
 
 ## Fast path
 
@@ -20,9 +21,12 @@ For every delegation:
 
 1. Normalize the target to `category:<name>` or `agent:<name>`.
 2. Keep the complete target prefix and preserve the original prompt.
-3. Treat `omo.jsonc` as intent-only. Always omit `backend` and `model` in a
-   normal call; Miwarang must choose the harness and model from its own route
-   and live catalogue.
+3. Treat `omo.jsonc` as intent-only. A normal call sends only `target` and
+   `prompt`, plus `mode` or `cwd` when needed. Never send `backend`, `model`,
+   or `agent` in normal routing. Put an OMO `agent:<name>` only in `target`.
+   Miwarang resolves the harness; OpenCode supplies its configured default
+   model, while command routes use configured candidate order and probe that
+   backend's catalogue only when configured.
 4. Set `mode: "background"` only when the caller requests asynchronous work.
 5. Pass `cwd` when the delegated work must happen in a specific project.
 6. Call `miwarang_delegate`.
@@ -46,6 +50,9 @@ Use `miwarang_delegate` for these target forms:
 - Any additional `category:<name>` or `agent:<name>` target with a matching
   Miwarang route.
 
+For example, route `agent:explore` with `target: "agent:explore"` only. Do not
+add `agent: "explore"` or guess a `backend` value; let Miwarang resolve both.
+
 Do not wait for the user to mention Miwarang. If a delegation target has a
 Miwarang route, route it through `miwarang_delegate` immediately. Preserve:
 
@@ -53,12 +60,18 @@ Miwarang route, route it through `miwarang_delegate` immediately. Preserve:
 - The original task prompt without dropping constraints or acceptance criteria.
 - The working directory through `cwd` when it is known.
 - Foreground/background intent through `mode`.
-- The configured agent name when the route or caller requires it.
+- The complete OMO target. An `agent:<name>` target selects a Miwarang route;
+  it is not a harness-agent override.
 
 Do not forward the OMO session's own model name or any model/backend value
 copied from `omo.jsonc`. OMO configuration supplies intent and category only.
 Omit `model` and `backend` unless the user explicitly requires an intentional
 target-harness override.
+OpenCode always uses the `orchestrator` agent and rejects `model` and `agent`
+overrides. Command Code defaults to `General`; the example enables its
+`agent` and `agent_output` tools so it can delegate to agents registered in
+that Command Code installation.
+Do not pass an OMO target name through the `agent` parameter.
 For the full parameter contract, read
 `references/parameter-contract.md`.
 
@@ -71,16 +84,17 @@ Use only the following parameters:
 | `target` | yes | Full `category:<name>` or `agent:<name>` string. |
 | `prompt` | yes | Original task plus constraints and acceptance criteria. |
 | `mode` | no | `"foreground"` by default or `"background"`. |
-| `backend` | no | Omit; Miwarang selects the configured harness and fallback. |
-| `model` | no | Omit; Miwarang validates and selects from the live catalogue. |
-| `agent` | no | Pass only when the route or caller needs a specific harness agent. |
+| `backend` | no | Omit normally. Only use an exact key from the configured `backends` when the user explicitly requires an override. |
+| `model` | no | Omit normally. Use only for an intentional command-backend override confirmed by that backend's catalogue; OpenCode rejects it. |
+| `agent` | no | Omit normally. Only use when explicitly required and command args support `{{agent}}`; OMO `agent:<name>` belongs in `target`, and OpenCode always uses `orchestrator`. |
 | `cwd` | no | Absolute project directory for the delegated work. |
 
 Never pass the OMO model as `model`. Never pass a model ID from one harness
 when forcing a different harness with `backend`. If an explicit override is
-necessary, verify that it is an intentional user requirement and that the
-model belongs to the selected backend's live catalogue. Otherwise remove both
-overrides and let Miwarang resolve them.
+necessary, verify that it is an intentional user requirement. A command
+backend model override must be supported by that backend; OpenCode rejects
+`model` and `agent` overrides. Otherwise omit both overrides and let Miwarang
+resolve the configured route.
 
 ## OMO configuration is intent-only
 
@@ -99,8 +113,10 @@ The correct handoff is:
 }
 ```
 
-Miwarang probes the live catalogue inside the delegate call. A separate
-model-list call is not required for normal routing.
+OpenCode sessions omit `model`, use `orchestrator`, and do not query the
+OpenCode model catalogue. Command backends use configured `models` in order;
+Miwarang probes that backend's live catalogue only when `listModelsArgv` is
+configured. A separate model-list call is not required for normal routing.
 
 ## Foreground and background work
 
@@ -126,7 +142,8 @@ one identifier type with the other.
 Foreground result details normally include:
 
 - `backend`: the backend that actually ran the task.
-- `model`: the model that actually ran the task.
+- `model`: the selected model for command backends. OpenCode's harness-selected
+  default is not reported as a Miwarang model.
 - `target`: the normalized target.
 - `resolvedVia`: `exact`, `wildcard`, or `default`.
 - `fallback` and `fallbackIndex` when a fallback was used.
@@ -138,8 +155,15 @@ its ID.
 ## Fallback behavior
 
 Miwarang resolves routes as exact target, namespace wildcard, then
-`defaultRoute`. A route can define ordered `fallbacks`, each with its own
-backend and model list.
+`defaultRoute`. Only command backends have Miwarang-selected model candidates:
+their `models` list is tried in order and checked against the Command Code
+catalogue when `listModelsArgv` is configured. OpenCode routes omit `models`;
+the OpenCode harness supplies the model and Miwarang always selects
+`orchestrator`.
+
+A route can define ordered backend `fallbacks`, each with its own backend and,
+for command backends, candidate list. Legacy `freeOnly` fields do not filter
+models; candidate order, not catalog cost, determines command-model priority.
 
 The normal call is intentionally backend-agnostic:
 
@@ -173,14 +197,18 @@ The recommended Command Code chain is:
 5. `qwen/qwen3.8-flash`
 6. `qwen/qwen3.7-flash`
 
-Keep free candidates before paid low-cost candidates. Do not add arbitrary
-premium models to a fallback list. A mixed free/paid list must not set
-`freeOnly`, because that would reject the paid candidates.
+Keep free candidates before low-cost fallback candidates. Do not add arbitrary
+premium models to a fallback list. Miwarang does not apply a free-only or
+cost-based filter, so the configured candidate order controls which command
+model is tried first.
 
-Foreground runs can continue through configured model and backend fallbacks
-when the provider reports quota, rate-limit, credit, five-hour, weekly-limit,
-or HTTP 429 errors. Explicit `model` or `backend` overrides disable fallback.
-Background start failures can continue through the same chain until a
+Foreground command runs can continue through configured candidates and
+backend fallbacks for quota, rate-limit, credit, five-hour, weekly-limit, or
+HTTP 429 errors. Recognized OpenCode provider failures can advance only to a
+configured backend fallback; they are never retried against a Miwarang model
+list.
+Explicit `model` or `backend` overrides disable the remaining fallback chain.
+Background start failures can use the configured chain until a
 `runId`/`sessionId` exists. Once an ID exists, runtime failures are reported
 through `miwarang_wait` rather than retried silently.
 
@@ -188,12 +216,14 @@ Miwarang does not create child OMO or DAG watcher processes. The main agent
 owns the lifecycle: start as many background delegations as needed, retain
 each returned identifier, then wait or cancel each one directly.
 
-Model catalogues are checked inside `miwarang_delegate`; do not ask the
-caller to run a separate model-list tool before every delegation. The agent
-does not need to invent or preselect a model. A catalog error such as
-`opencode/... unavailable` while using Command Code indicates that a
-primary-harness model list was forced onto the wrong backend. Remove the
-`backend` and `model` overrides, then retry the same intent target.
+Command model catalogues are checked inside `miwarang_delegate` when a
+command backend has a configured probe; do not ask the caller to run a
+separate model-list tool before every delegation. The agent does not need to
+invent or preselect a model. If a Command Code route reports that a configured
+candidate is absent from its catalogue, correct the Command Code route list.
+OpenCode does not use a model catalogue for session selection. If an OpenCode
+call rejects `model` or `agent`, omit those overrides and retry the same
+intent target.
 
 ## Native task boundary
 

@@ -26,6 +26,8 @@ through a shell string.
         "{{model}}",
         "--no-session",
         "--yolo",
+        "--tools-enable",
+        "agent,agent_output",
         "-t"
       ],
       "promptInput": "argument",
@@ -37,9 +39,10 @@ through a shell string.
 ```
 
 `listModelsArgv` enables the Command Code catalogue probe. It lets Miwarang
-validate configured model IDs and recognize `:free` or `-free` models. A probe
-failure falls back to the configured candidates; it does not authorize an
-arbitrary model.
+validate configured candidate IDs. `:free` and `-free` IDs may be marked
+zero-cost in catalog metadata, but Miwarang does not filter candidates by
+cost. A failed probe uses the route's configured candidates for normal
+routing; it does not introduce a model outside that list.
 
 ## Route definitions
 
@@ -50,12 +53,6 @@ An OpenCode route can define a harness-specific fallback:
   "routes": {
     "category:deep-high": {
       "backend": "opencode",
-      "models": [
-        "opencode/deepseek-v4.1-flash-free",
-        "opencode/nemotron-3-ultra-free",
-        "opencode/big-pickle"
-      ],
-      "freeOnly": true,
       "fallbacks": [
         {
           "backend": "commandcode",
@@ -76,10 +73,13 @@ An OpenCode route can define a harness-specific fallback:
 
 Rules:
 
-1. Keep model IDs in the namespace of their backend.
-2. Keep free IDs before paid low-cost IDs.
-3. Do not set `freeOnly` on a mixed fallback list.
-4. Do not use a primary OpenCode `models` list for a Command Code override.
+1. OpenCode routes omit `models`; OpenCode uses its configured default model
+   and Miwarang selects the `orchestrator` agent.
+2. Command routes keep candidate IDs in that backend's namespace and order
+   free IDs before the configured low-cost fallback models.
+3. Miwarang does not filter candidates by `freeOnly` or catalog cost; legacy
+   `freeOnly` fields do not enforce a price gate.
+4. Do not use a primary OpenCode model ID for a Command Code route.
 5. Use exact routes for important targets; use `category:*` or `agent:*` for
    intentional namespace defaults.
 6. Use `defaultRoute` only when an explicit catch-all is intended.
@@ -92,10 +92,11 @@ Target route resolution is:
 2. Namespace wildcard, such as `agent:*`.
 3. `defaultRoute`.
 
-Within a selected route, model candidates are checked against the selected
-backend's live catalogue in order. When `backend` explicitly matches a
-configured fallback, Miwarang uses that fallback's model list and disables
-further route fallback for that call.
+Within a command route, model candidates are checked against its live
+catalogue in order when `listModelsArgv` is configured. OpenCode model
+selection stays inside the harness and does not query its catalogue.
+When `backend` explicitly matches a configured fallback, Miwarang uses that
+fallback route and disables further route fallback for that call.
 
 ## Blocking native delegation
 

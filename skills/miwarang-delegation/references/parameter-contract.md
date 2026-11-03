@@ -6,8 +6,11 @@ Use this reference when a delegation needs explicit parameters.
 
 `omo.jsonc` supplies the intent/category and policy context. It does not
 provide a target-harness model selection. Never copy its model or backend into
-`miwarang_delegate`. Omit both fields and let Miwarang query the selected
-harness's live catalogue and apply the configured fallback chain.
+`miwarang_delegate`. Omit both fields and let Miwarang resolve the configured
+route and fallback chain. OpenCode uses its harness-configured model and
+`orchestrator` agent without a model-catalogue query. Command routes use their
+ordered `models` candidates and check the Command Code catalogue only when
+`listModelsArgv` is configured.
 
 ## Required values
 
@@ -40,10 +43,13 @@ Do not add credentials or private auth material to the prompt.
 | Field | Use it when | Avoid it when |
 | --- | --- | --- |
 | `mode` | The caller explicitly requests background execution. | The result is needed before continuing. |
-| `backend` | You intentionally need a configured alternate backend and its model list is compatible. | You only want the route's fallback. Omit it. |
-| `model` | The caller explicitly pins a model that exists in the selected backend's live catalogue. | The OMO session model is merely available. |
-| `agent` | A command/backend route requires a harness agent name. | The route already supplies the correct agent. |
+| `backend` | Only when the user explicitly requires an override and the value exactly matches a configured `backends` key. A matching fallback disables further fallbacks for the call. | Normal routing or when you only want the route's fallback; omit it. |
+| `model` | Only when the user explicitly pins a supported command-backend model. | Normal routing, an OMO session model, or any OpenCode target. OpenCode rejects model overrides. |
+| `agent` | Only when the user explicitly requires a command-agent override and its args use `{{agent}}`. | Normal routing, an OMO `agent:<name>` target, or any OpenCode target. OpenCode always uses `orchestrator`. |
 | `cwd` | The work must inspect or edit a specific project. | The current `ctx.cwd` is already the intended project. |
+
+For a normal call to `agent:explore`, put `agent:explore` in `target` only.
+Do not add `agent` or `backend` parameters.
 
 ## Safe foreground example
 
